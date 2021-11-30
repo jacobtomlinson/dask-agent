@@ -1,13 +1,23 @@
 Dask Agent
 ==========
 
-Dask Agent is a drop in replacement for ``dask-worker``, ``dask-spec`` and ``dask-cuda-worker`` which aims to provide more flexibility and control over starting worker processes.
+Dask Agent is a drop in replacement for ``dask-worker``, ``dask-spec`` and ``dask-cuda-worker`` which aims to provide more flexibility and control to power users over starting worker processes.
 
 Features:
+
 - Auto detect CPU size and create workers appropriately (similar to ``LocalCluster``).
 - Uses ``dask-cuda`` to launch GPU workers.
 - Can dynamically reprovision nodes with different worker types via the ``Client``.
 - Allows manual control over worker creation on existing nodes, useful for creating heterogenous clusters.
+
+Problems it solves:
+
+- Decouples node provisioning from worker provisioning
+- Allows worker reconfiguration without losing hardware allocation
+- Enables packing homogenous workers into heterogenous nodes
+- Enables packging of heterogenous workers into homogenous nodes
+- Allows mixing worker types without needing support in deployment tooling
+- Launches multiple worker types to make best use of advanced hardware
 
 Install
 -------
@@ -62,3 +72,23 @@ See the agent closing CPU workers and starting GPU workers
     distributed.worker - INFO - Stopping worker at tcp://127.0.0.1:55208
     distributed.agent - INFO - Provisioning nodes with mode 'auto-gpu'
     distributed.agent - ERROR - Cannot provision GPU workers, unable to find dask_cuda
+
+Examples
+--------
+
+Spec
+^^^^
+
+Reprovisioning each agent to run a worker from a spec.
+
+.. code-block:: python
+
+    await client.scheduler.reprovision_nodes(
+        mode="spec",
+        config={
+            "spec": {
+                "cls": "dask.distributed.Nanny",
+                "opts": {},
+            },
+        },
+    )

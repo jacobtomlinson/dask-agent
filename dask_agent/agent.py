@@ -1,5 +1,6 @@
 import sys
 import asyncio
+import json
 from tornado.ioloop import IOLoop
 import signal
 import logging
@@ -12,6 +13,7 @@ from distributed.objects import SchedulerInfo
 from distributed.core import rpc, Status
 from distributed.comm.addressing import get_address_host
 from distributed.deploy.utils import nprocesses_nthreads
+from distributed.deploy.spec import run_spec
 from distributed.cli.utils import install_signal_handlers
 from distributed.nanny import Nanny
 from distributed.protocol.pickle import dumps
@@ -23,7 +25,7 @@ logger = logging.getLogger(f"distributed.agent")
 
 
 class Agent(ServerNode):
-    def __init__(self, scheduler_address: str = None):
+    def __init__(self, scheduler_address: str = None, spec: str = None):
         self.name = f"Agent-{uuid.uuid4()}"
         self.scheduler_address = scheduler_address
         self.scheduler_comm = None
@@ -32,6 +34,8 @@ class Agent(ServerNode):
         self.ip = None
         self.provision_mode = None
         self.provision_config = None
+        if spec:
+            self.provision_config["spec"] = spec
         self.status = Status.created
         self._event_finished = asyncio.Event()
         if self.scheduler_address is None:
@@ -121,6 +125,8 @@ class Agent(ServerNode):
             self.nannies = await self.provision_auto_cpu()
         elif self.provision_mode == "auto-gpu":
             self.nannies = await self.provision_auto_gpu()
+        elif self.provision_mode == "spec":
+            self.nannies = await self.provision_spec()
         else:
             logger.error(f"Unknown provisioning mode '{self.provision_mode}'")
             sys.exit(1)
@@ -158,6 +164,18 @@ class Agent(ServerNode):
             logger.error("Cannot provision GPU workers, unable to find dask_cuda")
             return []
 
+    async def provision_spec(self):
+        if "spec" in self.provision_config:
+            spec = self.provision_config["spec"]
+            if isinstance(spec, str):
+                spec = json.loads(spec)
+
+            if "cls" in spec:  # single worker spec
+                spec = {spec["opts"].get("name", 0): spec}
+
+            workers = await run_spec(spec, self.scheduler_address)
+            return workers.values()
+
     def on_signal(self):
         close = self.close
 
@@ -169,7 +187,7 @@ class Agent(ServerNode):
         return f
 
 
-async def run_agent(*args, **kwargs):
-    agent = Agent(*args, **kwargs)
+async def run_agent(*args, spec=None, **kwargs):
+    agent = Agent(*args, spec=None, **kwargs)
     await agent.start()
     await agent.finished()
